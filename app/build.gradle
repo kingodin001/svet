@@ -1,0 +1,24 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'pro.vymi.svet'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'pro.vymi.svet'
+        minSdk 26
+        targetSdk 35
+        versionCode 1
+        versionName '0.1.0'
+    }
+    buildTypes {
+        release { minifyEnabled false }
+    }
+}
+
+tasks.register('syncWebAssets', Copy) {
+    from(rootDir) {
+        include 'index.html', 'style.css', 'game.js', 'assets/*.webp', 'assets/icon.svg'
+    }
+    into(project.file('src/main/assets'))
+}
+tasks.named('preBuild') { dependsOn(tasks.named('syncWebAssets')) }
