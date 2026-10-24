@@ -1,114 +1,130 @@
-/* Световой След — playable 5-level fantasy-light puzzle prototype.
-   Artistic backdrops are original game concept renders; rays and progression are interactive. */
+/* Световой След 0.2 — реальные отражения, поворот спрайтов, перетаскивание ящиков. */
 'use strict';
-(() => {
-const W=941,H=1672,$=s=>document.querySelector(s);
-const canvas=$('#scene'),ctx=canvas.getContext('2d',{alpha:false});
-const panels=['startScreen','levelsScreen','gameHud','pauseScreen','winScreen'];
-const LEVELS=[
- {title:'Первый луч',subtitle:'Поверни светильник и зеркало',goal:[608,307],hero:[463,1064],nodes:[
-  {id:'l1',type:'lamp',x:192,y:668,initial:1,target:2},{id:'m1',type:'mirror',x:487,y:741,initial:2,target:3}],
-  chains:[['l1','m1','goal']],par:2},
- {title:'Два отражения',subtitle:'Соедини две дорожки света',goal:[630,325],hero:[465,1090],nodes:[
-  {id:'l1',type:'lamp',x:237,y:591,initial:3,target:0},{id:'m1',type:'mirror',x:350,y:680,initial:1,target:2},
-  {id:'m2',type:'mirror',x:643,y:750,initial:0,target:1},{id:'l2',type:'lamp',x:777,y:924,initial:2,target:3}],
-  chains:[['l1','m1','m2','goal'],['l2','m2','goal']],par:4},
- {title:'Запертый проход',subtitle:'Поверни лучи и отодвинь ящик',goal:[657,302],hero:[455,1071],nodes:[
-  {id:'l1',type:'lamp',x:154,y:596,initial:3,target:0},{id:'m1',type:'mirror',x:425,y:711,initial:0,target:1},
-  {id:'m2',type:'mirror',x:672,y:846,initial:2,target:3},{id:'l2',type:'lamp',x:772,y:1018,initial:1,target:2}],
-  crate:{x:558,y:653,to:[560,805]},chains:[['l1','m1','goal'],['l2','m2','goal']],par:5},
- {title:'Лабиринт теней',subtitle:'Три зеркала и преграда',goal:[571,308],hero:[450,1100],nodes:[
-  {id:'l1',type:'lamp',x:188,y:560,initial:1,target:2},{id:'m1',type:'mirror',x:446,y:588,initial:2,target:3},
-  {id:'m2',type:'mirror',x:743,y:619,initial:0,target:1},{id:'m3',type:'mirror',x:608,y:971,initial:3,target:0},
-  {id:'l2',type:'lamp',x:776,y:1015,initial:0,target:1}],
-  crate:{x:312,y:842,to:[346,950]},chains:[['l1','m1','m2','m3','goal'],['l2','m3','goal']],par:6},
- {title:'Храм света',subtitle:'Последняя тайна древнего храма',goal:[469,314],hero:[460,1350],nodes:[
-  {id:'l1',type:'lamp',x:147,y:606,initial:2,target:3},{id:'m1',type:'mirror',x:374,y:588,initial:1,target:2},
-  {id:'m2',type:'mirror',x:574,y:763,initial:3,target:0},{id:'m3',type:'mirror',x:595,y:951,initial:2,target:3},
-  {id:'l2',type:'lamp',x:798,y:1087,initial:0,target:1}],
-  crate:{x:475,y:905,to:[324,971]},chains:[['l1','m1','m2','goal'],['l2','m3','goal']],par:6}
+(()=>{
+const canvas=document.getElementById('scene'),ctx=canvas.getContext('2d',{alpha:false});
+const $=id=>document.getElementById(id),W=720,H=1280,C=82,BX=73,BY=257,COLS=7,ROWS=9;
+const dx=[0,1,0,-1],dy=[-1,0,1,0];
+const STAGES=[
+ {title:'Первый луч',description:'Поверни фонарь, затем зеркало',lamp:[0,6,0,1],mirrors:[[3,6,1,0]],goal:[3,1],crates:[],par:2},
+ {title:'Два зеркала',description:'Проведи луч через два отражения',lamp:[0,7,1,1],mirrors:[[2,7,1,0],[2,3,1,0]],goal:[6,3],crates:[],par:2},
+ {title:'Передвинь ящик',description:'Освободи лучу дорогу',lamp:[0,7,0,1],mirrors:[[3,7,1,0],[3,2,0,0]],goal:[6,2],crates:[[[5,2],[5,4]]],par:3},
+ {title:'Три отражения',description:'Зеркала и преграда',lamp:[0,6,1,1],mirrors:[[2,6,1,0],[2,2,1,0],[5,2,0,1]],goal:[5,5],crates:[[[2,4],[0,4]]],par:4},
+ {title:'Храм света',description:'Открой древний портал',lamp:[0,7,0,1],mirrors:[[2,7,1,0],[2,2,1,0],[5,2,0,1],[5,5,0,1]],goal:[6,5],crates:[[[2,4],[0,4]],[[4,2],[4,4]]],par:7}
 ];
-const resources=LEVELS.map((_,i)=>{const img=new Image(); img.src=`assets/level${i+1}.webp`;return img});
-const LS='svetovoi_sled_v01';let saved;
-try{saved=JSON.parse(localStorage.getItem(LS)||'{}')}catch{saved={}}
-saved={unlocked:Math.max(0,Math.min(4,Number(saved.unlocked)||0)),stars:Array.isArray(saved.stars)?saved.stars.slice(0,5):[0,0,0,0,0]};
-let phase='start',index=0,level=LEVELS[0],nodes=[],crateMoved=false,moves=0,hints=0,history=[],started=0,selected=null,particles=[],raf=0,winning=false,lastFx=0,lastTip=0,historyAnchor=0;
-const rand=(a,b)=>a+(b-a)*Math.random(),clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
-const dist=(a,b,c,d)=>Math.hypot(a-c,b-d);
-function persist(){try{localStorage.setItem(LS,JSON.stringify(saved))}catch{}}
-function show(...visible){for(const id of panels)$('#'+id).classList.toggle('hidden',!visible.includes(id))}
-function tone(freq=550,duration=.085,type='sine',volume=.045){try{const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;const a=tone.audio||(tone.audio=new AC());if(a.state==='suspended')a.resume();let o=a.createOscillator(),g=a.createGain();o.type=type;o.frequency.setValueAtTime(freq,a.currentTime);o.frequency.exponentialRampToValueAtTime(Math.max(freq*.7,20),a.currentTime+duration);g.gain.setValueAtTime(volume,a.currentTime);g.gain.exponentialRampToValueAtTime(.001,a.currentTime+duration);o.connect(g).connect(a.destination);o.start();o.stop(a.currentTime+duration)}catch{}}
-function get(id){return nodes.find(n=>n.id===id)}
-function done(id){return id==='goal'||get(id)?.value===get(id)?.target}
-function chainDone(chain){return chain.slice(0,-1).every(done)}
-function success(){return level.chains.every(chainDone)&&(!level.crate||crateMoved)}
-function finish(){if(phase!=='game'||winning||!success())return;winning=true;const count= Math.max(1,3-(moves>level.par+4?1:0)-(hints>0?1:0));saved.stars[index]=Math.max(saved.stars[index]||0,count);saved.unlocked=Math.max(saved.unlocked,Math.min(index+1,4));persist();$('#resultStars').textContent='★'.repeat(count)+'☆'.repeat(3-count);$('#winMessage').textContent=index===4?'Ты открыл все пять порталов!':'Тень нашла дорогу к свету';$('#stats').textContent=`Ходов: ${moves}  ·  Время: ${Math.round((Date.now()-started)/1000)} сек.`;$('#nextBtn').textContent=index===4?'Играть заново ↻':'Следующий уровень →';makeBurst(490,490,72);tone(730,.28,'triangle',.10);setTimeout(()=>tone(990,.32,'sine',.075),170);setTimeout(()=>{if(phase==='game'){phase='win';show('winScreen')}},750)}
-function updatedGuide(){let left=nodes.filter(n=>n.value!==n.target);if(left.length){const first=left[0];$('#guideTitle').textContent=first.type==='lamp'?'Настрой светильник':'Поверни зеркало';$('#guideText').textContent='Коснись сияющего кольца на поле'}else if(level.crate&&!crateMoved){$('#guideTitle').textContent='Освободи путь';$('#guideText').textContent='Нажми на деревянный ящик'}else{$('#guideTitle').textContent='Световой путь собран';$('#guideText').textContent='Портал пробуждается…'}let total=nodes.length+(level.crate?1:0),ready=nodes.filter(n=>n.value===n.target).length+(level.crate&&crateMoved?1:0);$('#progressFill').style.width=(ready/total*100)+'%';$('#hudStars').textContent=(saved.stars[index]?'★'.repeat(saved.stars[index])+'☆'.repeat(3-saved.stars[index]):'☆☆☆')}
-function startGame(i){index=i;level=LEVELS[index];nodes=level.nodes.map(n=>({...n,value:n.initial}));crateMoved=false;moves=0;hints=0;history=[];selected=null;winning=false;phase='game';started=Date.now();particles=[];$('#levelTag').textContent='Уровень '+(index+1);show('gameHud');updatedGuide();toast(index===0?'Коснись светильника или зеркала, чтобы повернуть':'Поверни все зеркала и направь свет к порталу');tone(510,.15)}
-function mainMenu(){phase='start';show('startScreen')}
-function choose(){phase='levels';show('levelsScreen');let g=$('#levelsGrid');g.innerHTML='';LEVELS.forEach((l,i)=>{let b=document.createElement('button');b.className='level-tile';b.disabled=i>saved.unlocked;b.innerHTML=`<strong>${i+1}</strong><small>${i>saved.unlocked?'🔒':(saved.stars[i]?'★'.repeat(saved.stars[i])+'☆'.repeat(3-saved.stars[i]):l.title)}</small>`;b.addEventListener('click',()=>startGame(i));g.appendChild(b)})}
-function snapshot(){history.push({values:nodes.map(n=>n.value),crateMoved});if(history.length>30)history.shift()}
-function rotate(n){if(phase!=='game'||winning)return;snapshot();n.value=(n.value+1)%4;selected=n.id;moves++;tone(n.value===n.target?710:370,.08,'triangle');smallBurst(n.x,n.y,n.value===n.target?'#fff09b':'#80d7ff',14);updatedGuide();if(n.value===n.target)toast(n.type==='lamp'?'Светильник настроен!':'Зеркало отражает свет!');finish()}
-function moveCrate(){if(phase!=='game'||winning||!level.crate)return;snapshot();crateMoved=!crateMoved;selected='crate';moves++;tone(280,.11,'triangle');smallBurst(crateMoved?level.crate.to[0]:level.crate.x,crateMoved?level.crate.to[1]:level.crate.y,'#e3c18a',16);toast(crateMoved?'Проход свободен!':'Ящик вернулся на место');updatedGuide();finish()}
-let toastTimer=0;function toast(s){$('#toast').textContent=s;$('#toast').classList.add('visible');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').classList.remove('visible'),1950)}
-function doUndo(){if(!history.length){toast('Пока нечего отменять');return}const prev=history.pop();nodes.forEach((n,i)=>n.value=prev.values[i]);crateMoved=prev.crateMoved;moves=Math.max(0,moves-1);selected=null;updatedGuide();tone(390,.09)}
-function hint(){if(phase!=='game')return;hints++;let target=nodes.find(n=>n.value!==n.target);if(target){selected=target.id;toast(`Попробуй повернуть ${target.type==='lamp'?'светильник':'зеркало'} — он подсвечен`)}else if(level.crate&&!crateMoved){selected='crate';toast('Нажми на деревянный ящик, чтобы переместить его')}else toast('Путь готов!');tone(770,.11);}
-function onClickBoard(x,y){if(phase!=='game')return;
-  for(const n of nodes){if(dist(x,y,n.x,n.y)<75){rotate(n);return}}
-  if(level.crate){let c=level.crate,p=crateMoved?c.to:[c.x,c.y];if(dist(x,y,p[0],p[1])<94||dist(x,y,c.x,c.y)<70){moveCrate();return}}
-  if(y>1310&&y<1610){if(x<305){const a=nodes.filter(n=>n.type==='lamp'),n=a.find(v=>v.value!==v.target)||a[0];if(n)rotate(n)}else if(x<630){const a=nodes.filter(n=>n.type==='mirror'),n=a.find(v=>v.value!==v.target)||a[0];if(n)rotate(n)}else if(level.crate){moveCrate()}else toast('На этом уровне ящик не требуется');return}
-  const nearest=[...nodes].sort((a,b)=>dist(x,y,a.x,a.y)-dist(x,y,b.x,b.y))[0]; if(nearest&&dist(x,y,nearest.x,nearest.y)<108){rotate(nearest);return}toast('Нажми на светильник, зеркало или ящик')
+const stone=new Image();stone.src='assets/stone_atlas.webp';stone.onload=()=>backgroundDirty=true;
+const images=STAGES.map((_,i)=>{const im=new Image();im.src=`assets/level${i+1}.webp`;im.onload=()=>backgroundDirty=true;return im});
+const KEY='svetovoi_sled_v02',storage=(()=>{try{return JSON.parse(localStorage.getItem(KEY)||'{}')}catch{return {}}})();
+const saved={unlocked:Math.max(0,Math.min(4,Number(storage.unlocked)||0)),stars:Array.isArray(storage.stars)?storage.stars.slice(0,5):[0,0,0,0,0]};
+let mode='start',level=0,stage=null,objects=[],lamp=null,crates=[],trace=null,history=[],steps=0,hints=0,finishAt=0,finished=false,started=0,drag=null,activeGlow=null,backgroundDirty=true,background=document.createElement('canvas'),bctx=background.getContext('2d'),toasty=0,lastTick=0,particles=[];
+background.width=W;background.height=H;
+function save(){try{localStorage.setItem(KEY,JSON.stringify(saved))}catch{}}
+function x(c){return BX+(c+.5)*C}function y(r){return BY+(r+.5)*C}function inside(c,r){return c>=0&&c<COLS&&r>=0&&r<ROWS}
+function show(ids){for(const s of ['start','choose','hud','pauseModal','win'])$(s).classList.toggle('hidden',!ids.includes(s))}
+function rnd(n){const z=Math.sin(n*33.931)*43758.545;return z-Math.floor(z)}
+function saveState(){history.push({lamp:lamp.dir,mirrors:objects.map(o=>o.slash),crates:crates.map(c=>c.moved)});if(history.length>70)history.shift()}
+function snapshot(){return{level, lamp:lamp.dir,mirrors:objects.map(o=>o.slash),crates:crates.map(c=>c.moved)}}
+function center(o){return [x(o.c),y(o.r)]}
+function sound(freq=540,dur=.09){try{const Audio=window.AudioContext||window.webkitAudioContext;if(!Audio)return;const a=sound.a||(sound.a=new Audio());a.resume();const osc=a.createOscillator(),g=a.createGain();osc.type='triangle';osc.frequency.setValueAtTime(freq,a.currentTime);osc.frequency.exponentialRampToValueAtTime(Math.max(130,freq*.65),a.currentTime+dur);g.gain.setValueAtTime(.042,a.currentTime);g.gain.exponentialRampToValueAtTime(.001,a.currentTime+dur);osc.connect(g);g.connect(a.destination);osc.start();osc.stop(a.currentTime+dur)}catch{}}
+function toast(t){$('toast').textContent=t;$('toast').classList.add('visible');clearTimeout(toasty);toasty=setTimeout(()=>$('toast').classList.remove('visible'),2200)}
+function begin(i){level=i;stage=STAGES[i];lamp={c:stage.lamp[0],r:stage.lamp[1],dir:stage.lamp[2],target:stage.lamp[3],drawAngle:stage.lamp[2]*Math.PI/2};objects=stage.mirrors.map((m,j)=>({id:j,c:m[0],r:m[1],slash:m[2],target:m[3],angle:m[2]?-Math.PI/4:Math.PI/4}));crates=stage.crates.map((item,j)=>({id:j,c:item[0][0],r:item[0][1],targetC:item[1][0],targetR:item[1][1],moved:false,visualX:x(item[0][0]),visualY:y(item[0][1])}));history=[];drag=null;steps=0;hints=0;finished=false;finishAt=0;started=performance.now();mode='game';backgroundDirty=true;trace=cast();$('levelNumber').textContent=`УРОВЕНЬ ${i+1} / 5`;$('levelTitle').textContent=stage.title;$('stars').textContent=(saved.stars[i]?'★'.repeat(saved.stars[i])+'☆'.repeat(3-saved.stars[i]):'☆☆☆');show(['hud']);guide();}
+function menu(){mode='start';show(['start']);backgroundDirty=true}
+function selectLevels(){mode='choose';show(['choose']);backgroundDirty=true;let host=$('levelGrid');host.innerHTML='';STAGES.forEach((s,i)=>{const b=document.createElement('button');b.disabled=i>saved.unlocked;b.innerHTML=`<strong>${i+1}</strong><small>${i>saved.unlocked?'🔒 Закрыт':saved.stars[i]?'★'.repeat(saved.stars[i])+'☆'.repeat(3-saved.stars[i]):s.title}</small>`;b.onclick=()=>begin(i);host.appendChild(b)})}
+// Deterministic optical reflection. Direction: 0 up, 1 right, 2 down, 3 left.
+function cast(){let c=lamp.c,r=lamp.r,d=lamp.dir;const path=[[x(c),y(r)]],seen=new Set();let hit='edge',blocked=null;
+ for(let i=0;i<110;i++){
+ const signature=`${c}/${r}/${d}`;if(seen.has(signature)){hit='loop';break}seen.add(signature);
+ c+=dx[d];r+=dy[d];if(!inside(c,r)){const prev=path[path.length-1];path.push([prev[0]+dx[d]*C*.47,prev[1]+dy[d]*C*.47]);hit='edge';break}
+ path.push([x(c),y(r)]);
+ if(stage.goal[0]===c&&stage.goal[1]===r){hit='goal';break}
+ const block=crates.find(q=>(q.moved?q.targetC:q.c)===c&&(q.moved?q.targetR:q.r)===r);if(block){hit='crate';blocked=block;break}
+ const m=objects.find(q=>q.c===c&&q.r===r);if(m){blocked=m;d=m.slash?[3,2,1,0][d]:[1,0,3,2][d]}
+ }
+ return{path,hit,blocked};}
+function recalc(){trace=cast();guide();if(trace.hit==='goal'&&!finished&&mode==='game'){finished=true;finishAt=performance.now();spark(x(stage.goal[0]),y(stage.goal[1]),55);sound(910,.25)}}
+function nextIncorrect(){if(lamp.dir!==lamp.target)return {kind:'lamp',item:lamp};for(const m of objects)if(m.slash!==m.target)return{kind:'mirror',item:m};for(const c of crates)if(!c.moved)return{kind:'crate',item:c};return null}
+function guide(){const n=nextIncorrect();if(!n){$('instruction').textContent='✨ Луч достиг портала!';$('explanation').textContent='Дверь открывается…';return}
+ if(n.kind==='lamp'){$('instruction').textContent='👆 Нажми на фонарь';$('explanation').textContent='Он ПОВЕРНЁТСЯ и изменит направление луча'}
+ else if(n.kind==='mirror'){$('instruction').textContent='👆 Нажми на синее зеркало';$('explanation').textContent='Зеркало ПОВЕРНЁТСЯ и отразит луч'}
+ else{$('instruction').textContent='☝️ Перетащи деревянный ящик';$('explanation').textContent='Убери его с луча в зелёный квадрат'}
+ activeGlow=n}
+function doRotate(hit){if(mode!=='game'||finished)return;saveState();steps++;
+ if(hit.kind==='lamp'){lamp.dir=(lamp.dir+1)%4;toast('Фонарь поворачивается!')}else{hit.item.slash=1-hit.item.slash;toast('Зеркало повернулось!')}
+ const p=center(hit.item);spark(p[0],p[1],12);sound(hit.kind==='lamp'?490:680);recalc()}
+function moveCrate(cr,complete){if(mode!=='game'||finished)return;const orig=cr.moved;if(orig===complete)return;saveState();cr.moved=complete;steps++;sound(280,.12);toast(complete?'Отлично! Луч больше не закрыт':'Ящик возвращён');spark(x(cr.targetC),y(cr.targetR),13);recalc()}
+function undo(){if(mode!=='game'||!history.length)return;const h=history.pop();lamp.dir=h.lamp;objects.forEach((m,i)=>m.slash=h.mirrors[i]);crates.forEach((c,i)=>c.moved=h.crates[i]);finished=false;steps=Math.max(0,steps-1);sound(310);recalc();toast('Последний ход отменён')}
+function hint(){if(mode!=='game'||finished)return;const n=nextIncorrect();if(!n){toast('Путь уже открыт!');return}hints++;if(n.kind==='lamp'){lamp.dir=lamp.target}else if(n.kind==='mirror'){n.item.slash=n.item.target}else{n.item.moved=true}steps++;spark(x(n.item.c),y(n.item.r),15);recalc();toast('Подсказка выполнила один правильный ход');sound(720,.13)}
+function complete(){if(mode!=='game')return;mode='win';const starCount=Math.max(1,3-(steps>stage.par+3?1:0)-(hints?1:0));saved.stars[level]=Math.max(saved.stars[level]||0,starCount);saved.unlocked=Math.max(saved.unlocked,Math.min(4,level+1));save();$('resultStars').textContent='★'.repeat(starCount)+'☆'.repeat(3-starCount);$('winDescription').textContent=`Победа за ${steps} ходов · ${stage.title}`;$('next').textContent=level===4?'Вернуться к первому →':'Следующий уровень →';show(['win']);sound(850,.31)}
+function pt(e){let b=canvas.getBoundingClientRect();return[(e.clientX-b.left)*W/b.width,(e.clientY-b.top)*H/b.height]}
+function itemAt(px,py){const near=(o,r=39)=>Math.hypot(px-x(o.c),py-y(o.r))<r;
+ for(const c of [...crates].reverse()){const cc=c.moved?c.targetC:c.c,rr=c.moved?c.targetR:c.r;if(Math.hypot(px-x(cc),py-y(rr))<46)return{kind:'crate',item:c}}
+ for(const m of objects)if(near(m,43))return{kind:'mirror',item:m};if(near(lamp,46))return{kind:'lamp',item:lamp};return null}
+canvas.addEventListener('pointerdown',e=>{if(mode!=='game'||finished)return;const [px,py]=pt(e),hit=itemAt(px,py);if(!hit)return;if(hit.kind==='crate'){drag={item:hit.item,startX:px,startY:py,px,py,dist:0};canvas.setPointerCapture(e.pointerId)}else doRotate(hit)});
+canvas.addEventListener('pointermove',e=>{if(!drag)return;const [px,py]=pt(e);drag.px=px;drag.py=py;drag.dist=Math.hypot(px-drag.startX,py-drag.startY)});
+function release(){if(!drag)return;const d=drag;drag=null;if(d.dist<12){toast('Перетащи ящик в зелёную клетку')}else if(Math.hypot(d.px-x(d.item.targetC),d.py-y(d.item.targetR))<C*1.3){moveCrate(d.item,true)}else if(Math.hypot(d.px-x(d.item.c),d.py-y(d.item.r))<C*1.3&&d.item.moved){moveCrate(d.item,false)}else{toast('Помести ящик в подсвеченный квадрат');sound(230)}}
+canvas.addEventListener('pointerup',release);canvas.addEventListener('pointercancel',release);
+$('play').onclick=()=>begin(saved.unlocked);$('levelChoice').onclick=selectLevels;$('back').onclick=menu;$('pause').onclick=()=>{mode='pause';show(['pauseModal'])};$('resume').onclick=()=>{mode='game';show(['hud'])};$('again').onclick=()=>begin(level);$('toMenu').onclick=menu;$('undo').onclick=undo;$('reset').onclick=()=>begin(level);$('hint').onclick=hint;$('next').onclick=()=>begin(level===4?0:level+1);$('toChoice').onclick=selectLevels;
+window.addEventListener('keydown',e=>{if(e.key==='Escape'&&mode==='game')$('pause').click();else if(e.key==='Escape'&&mode==='pause')$('resume').click();else if((e.key==='Backspace'||e.key==='z')&&mode==='game')undo();else if(e.key==='h'&&mode==='game')hint()});
+function rounded(cx,cy,w,h,r){ctx.beginPath();ctx.roundRect(cx,cy,w,h,r)}
+function shine(cx,cy,r,color,opacity=.4){ctx.save();ctx.globalCompositeOperation='screen';ctx.globalAlpha=opacity;const g=ctx.createRadialGradient(cx,cy,0,cx,cy,r);g.addColorStop(0,color);g.addColorStop(.3,color+'aa');g.addColorStop(1,'#00000000');ctx.fillStyle=g;ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.fill();ctx.restore()}
+function rubble(){// Slightly rough perimeter and the waters of a lost temple
+ const gr=bctx.createLinearGradient(0,230,720,1090);gr.addColorStop(0,'#172c4b');gr.addColorStop(.5,'#20436a');gr.addColorStop(1,'#07162f');bctx.fillStyle=gr;bctx.fillRect(BX-34,BY-25,COLS*C+68,ROWS*C+52);
+ for(let i=0;i<100;i++){const px=24+rnd(i*3)*672,py=BY-16+rnd(i*9)*ROWS*C+32;if(px>BX&&px<BX+COLS*C)continue;bctx.fillStyle=i%2?'#1e71998c':'#84c7d731';bctx.beginPath();bctx.ellipse(px,py,2+rnd(i)*13,1+rnd(i+6)*5,0,0,Math.PI*2);bctx.fill()}}
+function tile(c,r){const px=BX+c*C,py=BY+r*C,k=c+11*r;const g=bctx.createLinearGradient(px,py,px+C,py+C);const q=rnd(k*31);g.addColorStop(0,`hsl(${218+q*17} 18% ${35+q*7}%)`);g.addColorStop(.45,`hsl(${214+q*12} 18% ${30+q*7}%)`);g.addColorStop(1,`hsl(${217+q*11} 24% ${18+q*7}%)`);
+ bctx.shadowColor='#020b19';bctx.shadowBlur=3;bctx.shadowOffsetY=3;
+ bctx.fillStyle=g;bctx.beginPath();bctx.roundRect(px+2,py+3,C-5,C-5,4);bctx.fill();bctx.save();bctx.clip();
+ if(stone.complete&&stone.naturalWidth){const tileIndex=(k*7+3*r)%16;bctx.globalAlpha=.72;bctx.drawImage(stone,(tileIndex%4)*112,Math.floor(tileIndex/4)*112,112,112,px+2,py+3,C-5,C-5);bctx.globalAlpha=1}
+ const shade=bctx.createLinearGradient(px,py,px+C,py+C);shade.addColorStop(0,'#f9d9a020');shade.addColorStop(.45,'#00000000');shade.addColorStop(1,'#0713268a');bctx.fillStyle=shade;bctx.fillRect(px+1,py+2,C-3,C-3);bctx.restore();bctx.shadowBlur=0;bctx.shadowOffsetY=0;
+ bctx.strokeStyle='#d1c3a650';bctx.lineWidth=1.3;bctx.stroke();bctx.fillStyle='#d3bfa31a';bctx.fillRect(px+9,py+9,C-20,1);
+ // tiny organic cracks, etched decorative masonry instead of a flat code-like grid
+ if(q>.38){bctx.strokeStyle='#1024386d';bctx.lineWidth=1.5;bctx.beginPath();bctx.moveTo(px+12,py+27);bctx.lineTo(px+30,py+29);bctx.lineTo(px+35,py+38);bctx.lineTo(px+44,py+36);bctx.stroke()}
+ if(q>.76){bctx.fillStyle='#244f32aa';for(let n=0;n<4;n++){bctx.beginPath();bctx.ellipse(px+8+n*6,py+C-9-n%2*5,7,3.6,(n-2)*.8,0,Math.PI*2);bctx.fill()}}}
+function atmosphere(){bctx.clearRect(0,0,W,H);const img=images[mode==='start'?0:mode==='choose'?4:level];if(img&&img.complete&&img.naturalWidth){bctx.save();bctx.filter='blur(1.5px)';bctx.drawImage(img,0,170,941,1310,0,0,720,1280);bctx.restore()}
+ const g=bctx.createLinearGradient(0,0,0,H);g.addColorStop(0,'#041127a3');g.addColorStop(.27,'#07162c70');g.addColorStop(.8,'#06152a66');g.addColorStop(1,'#03101fe4');bctx.fillStyle=g;bctx.fillRect(0,0,W,H);
+ // amber windows and ruins, night sky
+ for(let i=0;i<5;i++){const xx=42+rnd(i*7)*650,yy=160+rnd(i*12)*850;const rg=bctx.createRadialGradient(xx,yy,0,xx,yy,80);rg.addColorStop(0,'#ffba5d48');rg.addColorStop(1,'#0000');bctx.fillStyle=rg;bctx.fillRect(xx-85,yy-85,170,170)}
+ if(mode!=='game'&&mode!=='pause'&&mode!=='win')return;
+ rubble();bctx.save();bctx.shadowColor='#020618';bctx.shadowBlur=18;for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++)tile(c,r);bctx.restore();
+ // botanical hanging vines, blue water beyond carved edge
+ for(let k=0;k<32;k++){let side=k%2?BX-16:BX+COLS*C+10;let yy=BY+28+k*22;const green=rnd(k*93);bctx.fillStyle=green>.5?'#28572b':'#4b7731';bctx.beginPath();bctx.ellipse(side+(k%2?1:-1)*12,yy,8+green*8,4+green*5,(k%5)*.4,0,Math.PI*2);bctx.fill()}
+ const rim=bctx.createLinearGradient(BX,BY,BX+COLS*C,BY+ROWS*C);rim.addColorStop(0,'#c2ab75');rim.addColorStop(1,'#425271');bctx.strokeStyle=rim;bctx.lineWidth=6;bctx.strokeRect(BX-4,BY-3,COLS*C+8,ROWS*C+7);
+ // Warm torch splashes on the edges
+ for(const [xx,yy] of [[BX-9,BY+110],[BX+COLS*C+7,BY+155]]){const rg=bctx.createRadialGradient(xx,yy,3,xx,yy,116);rg.addColorStop(0,'#ffc06a92');rg.addColorStop(1,'#ffa93100');bctx.fillStyle=rg;bctx.fillRect(xx-116,yy-116,232,232)}
 }
-canvas.addEventListener('pointerdown',e=>{if(phase!=='game')return;const rect=canvas.getBoundingClientRect();onClickBoard((e.clientX-rect.left)*W/rect.width,(e.clientY-rect.top)*H/rect.height)});
-$('#playBtn').addEventListener('click',()=>startGame(saved.unlocked));$('#chooseBtn').addEventListener('click',choose);$('#levelsBack').addEventListener('click',mainMenu);
-$('#pauseBtn').addEventListener('click',()=>{phase='pause';show('pauseScreen')});$('#continueBtn').addEventListener('click',()=>{phase='game';show('gameHud')});$('#restartMenuBtn').addEventListener('click',()=>startGame(index));$('#homeBtn').addEventListener('click',mainMenu);
-$('#undoBtn').addEventListener('click',doUndo);$('#restartBtn').addEventListener('click',()=>startGame(index));$('#hintBtn').addEventListener('click',hint);
-$('#nextBtn').addEventListener('click',()=>startGame(index===4?0:index+1));$('#winMenuBtn').addEventListener('click',choose);
-window.addEventListener('keydown',e=>{if(e.key==='Escape'&&phase==='game'){$('#pauseBtn').click()}else if(e.key==='Escape'&&phase==='pause'){$('#continueBtn').click()}else if((e.key==='z'||e.key==='Backspace')&&phase==='game'){doUndo()}else if(e.key==='h'&&phase==='game'){hint()}});
-function smallBurst(x,y,color,count=8){for(let i=0;i<count;i++){let a=rand(0,Math.PI*2),s=rand(.9,4);particles.push({x,y,dx:Math.cos(a)*s,dy:Math.sin(a)*s-2,life:rand(26,75),max:75,color,size:rand(1,5)})}}
-function makeBurst(x,y,n){smallBurst(x,y,'#ffd579',n)}
-function drawImage(img){if(img.complete&&img.naturalWidth)ctx.drawImage(img,0,0,W,H);else{let bg=ctx.createLinearGradient(0,0,W,H);bg.addColorStop(0,'#193756');bg.addColorStop(1,'#060a22');ctx.fillStyle=bg;ctx.fillRect(0,0,W,H)}}
-function ray(from,to,alpha,time,strong=true){let [x1,y1]=from,[x2,y2]=to;let d=dist(x1,y1,x2,y2);if(d<4)return;ctx.save();ctx.globalCompositeOperation='screen';ctx.globalAlpha=alpha;ctx.lineCap='round';
-  let beam=ctx.createLinearGradient(x1,y1,x2,y2);beam.addColorStop(0,'#ffad30');beam.addColorStop(.42,'#ffe889');beam.addColorStop(1,'#fffed8');
-  for(const [w,a,blur] of [[33,.13,28],[17,.27,16],[7,.6,10],[2,.85,5]]){ctx.strokeStyle=beam;ctx.lineWidth=w;ctx.globalAlpha=alpha*a;ctx.shadowColor='#ffcb66';ctx.shadowBlur=blur;ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke()}
-  ctx.shadowBlur=0;let ux=(x2-x1)/d,uy=(y2-y1)/d;const density=Math.max(1,Math.floor(d/72));for(let i=0;i<density;i++){let pos=((time*.00025+i/density)%1),xx=x1+(x2-x1)*pos,yy=y1+(y2-y1)*pos;ctx.fillStyle='#fff8be';ctx.globalAlpha=alpha*(.15+.55*(1-pos));ctx.beginPath();ctx.arc(xx,yy,1.4+2*(1-pos),0,Math.PI*2);ctx.fill()}
-  ctx.restore()}
-function brokenRay(n,next,time){let targetAngle=Math.atan2(next[1]-n.y,next[0]-n.x),offset=(((n.value-n.target+4)%4)+4)%4;let angle=targetAngle+offset*Math.PI/2;const end=[clamp(n.x+Math.cos(angle)*randDet(n.id)*265,90,875),clamp(n.y+Math.sin(angle)*randDet(n.id)*265,210,1290)];ray([n.x,n.y],end,.78,time,false)}
-function randDet(str){let v=0;for(let i=0;i<str.length;i++)v+=(str.charCodeAt(i)*(i+1));return .8+(v%31)/100}
-function targetPos(id){if(id==='goal')return level.goal;let n=get(id);return[n.x,n.y]}
-function beams(time){let connections=new Set();for(const chain of level.chains){let active=true;for(let i=0;i<chain.length-1;i++){
-  const k=chain[i],next=chain[i+1],obj=get(k);if(!obj)break;if(!active)break;
-  let key=k+'>'+next,can=obj.value===obj.target;
-  if(can&&(!level.crate||crateMoved||next!=='goal')){if(!connections.has(key)){ray([obj.x,obj.y],targetPos(next),.95,time);connections.add(key)}}else{brokenRay(obj,targetPos(next),time);active=false}if(!can)active=false;
-  if(next==='goal'&&level.crate&&!crateMoved){active=false}
- }}
-}
-function glowCircle(x,y,r,color,alpha,time){ctx.save();ctx.globalCompositeOperation='screen';let gr=ctx.createRadialGradient(x,y,0,x,y,r);gr.addColorStop(0,color);gr.addColorStop(.24,color);gr.addColorStop(1,'#00000000');ctx.globalAlpha=alpha;ctx.fillStyle=gr;ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();ctx.restore()}
-function drawNode(n,time){const okay=n.value===n.target,sel=selected===n.id,rad=n.type==='lamp'?47:54;let oscillate=(Math.sin(time*.003+n.x)*.5+.5);
-  if(okay||sel)glowCircle(n.x,n.y,rad*2.15,okay?'#ffd57f':'#68c8ff',okay?.20:.20,time);
-  ctx.save();ctx.translate(n.x,n.y);let a=(n.value-n.target)*Math.PI/2;
-  ctx.strokeStyle=okay?'#ffeaba':'#7bbfff';ctx.shadowColor=okay?'#ffb64c':'#47afff';ctx.shadowBlur=okay?17:9;ctx.lineWidth=sel?4:2.4;ctx.globalAlpha=sel?.96:.68;
-  ctx.beginPath();ctx.arc(0,0,rad+7,-Math.PI*.10,Math.PI*.83);ctx.stroke();ctx.beginPath();ctx.arc(0,0,rad+7,Math.PI*.9,Math.PI*1.72);ctx.stroke();ctx.shadowBlur=0;
-  // Animated pointer makes rotations visually obvious, while keeping the original painted object intact.
-  ctx.rotate(a-.6);ctx.beginPath();ctx.moveTo(rad+17,0);ctx.lineTo(rad+2,-9);ctx.lineTo(rad+2,9);ctx.closePath();ctx.fillStyle=okay?'#fff4c6':'#b7e9ff';ctx.fill();
-  if(sel){ctx.beginPath();ctx.arc(0,0,rad+19,0,Math.PI*2);ctx.setLineDash([6,11]);ctx.strokeStyle='#fff9be';ctx.lineWidth=2;ctx.globalAlpha=.5+oscillate*.3;ctx.stroke();ctx.setLineDash([])}ctx.restore();
-}
-function drawCrate(time){if(!level.crate)return;const c=level.crate,p=crateMoved?c.to:[c.x,c.y];let sel=selected==='crate';if(crateMoved){glowCircle(c.x,c.y,68,'#fff4a0',.23,time);ctx.save();ctx.strokeStyle='#fbe6b6';ctx.lineWidth=3;ctx.setLineDash([8,10]);ctx.beginPath();ctx.arc(c.x,c.y,45,0,Math.PI*2);ctx.stroke();ctx.restore();
-  // Stylized animated crate at its movable position; the painted original location is retained as environmental scenery.
-  drawWoodenCrate(p[0],p[1]);}
-  ctx.save();ctx.strokeStyle=crateMoved?'#a5ffdb':'#ffdf99';ctx.lineWidth=sel?5:3;ctx.shadowColor='#e9ae64';ctx.shadowBlur=18;ctx.globalAlpha=.7+Math.sin(time*.003)*.1;ctx.beginPath();ctx.arc(p[0],p[1],66,.2,Math.PI*1.8);ctx.stroke();ctx.restore();
-  if(!crateMoved){ctx.save();ctx.setLineDash([8,9]);ctx.strokeStyle='#d5e5f9';ctx.globalAlpha=.32;ctx.strokeRect(c.to[0]-38,c.to[1]-37,76,74);ctx.restore()}
-}
-function drawWoodenCrate(x,y){ctx.save();ctx.translate(x,y);ctx.shadowColor='#000a';ctx.shadowBlur=13;ctx.shadowOffsetY=8;ctx.fillStyle='#51301a';ctx.fillRect(-43,-42,86,83);ctx.shadowBlur=0;ctx.shadowOffsetY=0;let grad=ctx.createLinearGradient(-42,-42,44,43);grad.addColorStop(0,'#9f6032');grad.addColorStop(.45,'#e19b56');grad.addColorStop(1,'#643717');ctx.fillStyle=grad;ctx.fillRect(-38,-37,76,74);ctx.strokeStyle='#442418';ctx.lineWidth=10;ctx.strokeRect(-39,-38,78,76);ctx.beginPath();ctx.moveTo(-33,-32);ctx.lineTo(33,30);ctx.moveTo(32,-31);ctx.lineTo(-33,31);ctx.stroke();ctx.strokeStyle='#efb577';ctx.lineWidth=3;ctx.strokeRect(-31,-30,62,60);ctx.restore()}
-function drawParticles(time){if(phase==='game'||phase==='win'){if(time-lastFx>95){lastFx=time;particles.push({x:rand(110,830),y:rand(210,1270),dx:rand(-.2,.2),dy:rand(-1.4,-.3),life:rand(95,200),max:200,color:Math.random()>.6?'#ffe098':'#a2cfff',size:rand(.7,2)})}}
- for(let i=particles.length-1;i>=0;i--){let p=particles[i];p.x+=p.dx;p.y+=p.dy;p.dy+=.006;p.life--;if(p.life<=0){particles.splice(i,1);continue}ctx.save();ctx.globalAlpha=clamp(p.life/p.max,0,.85);ctx.fillStyle=p.color;ctx.shadowColor=p.color;ctx.shadowBlur=7;ctx.beginPath();ctx.arc(p.x,p.y,p.size,0,Math.PI*2);ctx.fill();ctx.restore()}}
-function drawCracks(time){if(phase!=='game')return;let visible=0;for(const c of level.chains)if(chainDone(c))visible++;if(visible){glowCircle(level.goal[0],level.goal[1],150,'#ffeaa0',.10+visible*.07+Math.sin(time*.004)*.02,time)}
- if(winning){ctx.save();let a=clamp((Date.now()-started)*.003,0,1);glowCircle(level.goal[0],level.goal[1],370,'#ffe3a4',.45,time);ctx.restore()}}
-function paint(time){if(phase==='start'){drawImage(resources[0]);ctx.fillStyle='#03102b33';ctx.fillRect(0,0,W,H)}else if(phase==='levels'){drawImage(resources[4]);ctx.fillStyle='#07122b88';ctx.fillRect(0,0,W,H)}else{
-  drawImage(resources[index]);ctx.save();let d=ctx.createLinearGradient(0,160,0,1340);d.addColorStop(0,'#00102c66');d.addColorStop(.15,'#03152d72');d.addColorStop(.83,'#03152d80');d.addColorStop(1,'#03152d00');ctx.fillStyle=d;ctx.fillRect(0,180,W,1135);ctx.restore();beams(time);drawCracks(time);for(const n of nodes)drawNode(n,time);drawCrate(time)}
- drawParticles(time);raf=requestAnimationFrame(paint)}
-resources[0].onerror=()=>console.warn('Не найден файл художественного фона: assets/level1.webp');
-raf=requestAnimationFrame(paint);
-// Test-only read access for automated local validation; no production cheat controls.
-window.svetDebug=()=>({phase,index,values:nodes.map(n=>({id:n.id,value:n.value,target:n.target,x:n.x,y:n.y})),crateMoved,moves,unlocked:saved.unlocked,stars:saved.stars.slice()});
+function drawTorch(tx,ty,t){ctx.save();ctx.translate(tx,ty);ctx.shadowColor='#ffbb56';ctx.shadowBlur=22;ctx.fillStyle='#ffe2a0';ctx.beginPath();ctx.moveTo(0,-16-3*Math.sin(t/180));ctx.quadraticCurveTo(-16,-1,0,17);ctx.quadraticCurveTo(14,0,0,-16-3*Math.sin(t/180));ctx.fill();ctx.shadowBlur=0;ctx.fillStyle='#77512a';ctx.fillRect(-6,20,12,24);ctx.strokeStyle='#c39a52';ctx.lineWidth=3;ctx.strokeRect(-8,-5,16,24);ctx.restore()}
+function mirror(cx,cy,m,t){const wanted=m.slash?-Math.PI/4:Math.PI/4;m.angle+=((wanted-m.angle+Math.PI*3)%(Math.PI*2)-Math.PI)*.19;const active=activeGlow&&activeGlow.item===m&&mode==='game';
+ shine(cx,cy,70,active?'#45bcff':'#3675c7',active?.33:.16);ctx.save();ctx.translate(cx,cy+4);ctx.shadowColor='#000f';ctx.shadowBlur=17;ctx.shadowOffsetY=13;ctx.fillStyle='#493c3c';rounded(-45,-18,90,38,9);ctx.fill();ctx.shadowBlur=0;ctx.shadowOffsetY=0;ctx.rotate(m.angle);
+ const rim=ctx.createLinearGradient(-48,-15,47,18);rim.addColorStop(0,'#fff3b4');rim.addColorStop(.28,'#94723a');rim.addColorStop(.67,'#d6c190');rim.addColorStop(1,'#5d513e');ctx.fillStyle=rim;rounded(-51,-14,102,28,5);ctx.fill();
+ const glass=ctx.createLinearGradient(-46,-14,43,14);glass.addColorStop(0,'#0c3568');glass.addColorStop(.24,'#54c6f2');glass.addColorStop(.48,'#c9faff');glass.addColorStop(.65,'#367abd');glass.addColorStop(1,'#091f55');ctx.fillStyle=glass;rounded(-46,-10,92,20,3);ctx.fill();ctx.strokeStyle='#d6ffffa9';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(-37,-5);ctx.lineTo(18,-5);ctx.lineTo(34,6);ctx.stroke();ctx.restore();
+ if(active){ctx.strokeStyle=`rgba(166,228,255,${.5+.3*Math.sin(t/260)})`;ctx.lineWidth=3;ctx.beginPath();ctx.arc(cx,cy,58,0,Math.PI*2);ctx.stroke()}}
+function lampSprite(cx,cy,angle,t,active){shine(cx,cy,80,'#ffab40',active?.42:.26);ctx.save();ctx.translate(cx,cy);ctx.fillStyle='#130f18ba';ctx.beginPath();ctx.ellipse(4,30,44,16,0,0,Math.PI*2);ctx.fill();
+ // Engraved pedestal remains grounded; the whole brass emitter barrel rotates
+ const stem=ctx.createLinearGradient(-20,0,20,0);stem.addColorStop(0,'#442414');stem.addColorStop(.4,'#ca914d');stem.addColorStop(.74,'#7d4a2c');stem.addColorStop(1,'#261a19');ctx.fillStyle=stem;rounded(-22,12,44,18,4);ctx.fill();ctx.fillStyle='#b17b40';ctx.fillRect(-5,-3,10,22);
+ ctx.rotate(angle);const metal=ctx.createLinearGradient(-23,-52,24,-48);metal.addColorStop(0,'#34252c');metal.addColorStop(.16,'#e1a75c');metal.addColorStop(.39,'#9d6032');metal.addColorStop(.7,'#e3bd75');metal.addColorStop(1,'#57361f');ctx.fillStyle=metal;rounded(-23,-44,46,61,12);ctx.fill();ctx.strokeStyle='#e8bb73';ctx.lineWidth=4;ctx.strokeRect(-22,-46,44,8);ctx.strokeStyle='#502b27';ctx.lineWidth=3;ctx.strokeRect(-23,-6,46,7);
+ ctx.shadowBlur=15;ctx.shadowColor='#ffe5a0';ctx.fillStyle='#ffe8ab';ctx.beginPath();ctx.ellipse(0,-44,17,8,0,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;
+ ctx.strokeStyle='#684d37';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(-9,16);ctx.lineTo(-18,27);ctx.moveTo(9,16);ctx.lineTo(18,27);ctx.stroke();ctx.restore();
+ if(active){ctx.save();ctx.strokeStyle=`rgba(255,227,146,${.7+.2*Math.sin(t/230)})`;ctx.lineWidth=4;ctx.beginPath();ctx.arc(cx,cy,60,-2,2);ctx.stroke();ctx.restore()}}
+function crateSprite(cx,cy,t,active,held){ctx.save();ctx.translate(cx,cy);ctx.shadowColor='#000e';ctx.shadowBlur=14;ctx.shadowOffsetY=9;ctx.fillStyle='#2b1b16';rounded(-34,-32,68,68,5);ctx.fill();ctx.shadowBlur=0;ctx.shadowOffsetY=0;
+ let wood=ctx.createLinearGradient(-30,-33,32,32);wood.addColorStop(0,'#c18a4a');wood.addColorStop(.4,'#9a5f31');wood.addColorStop(1,'#482a22');ctx.fillStyle=wood;rounded(-32,-32,64,62,4);ctx.fill();ctx.strokeStyle='#482b1e';ctx.lineWidth=8;ctx.strokeRect(-29,-29,58,54);ctx.strokeStyle='#d2a161';ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(-24,-24);ctx.lineTo(25,25);ctx.moveTo(25,-24);ctx.lineTo(-24,25);ctx.stroke();ctx.fillStyle='#d8b479';for(const xx of [-24,24])for(const yy of [-22,22]){ctx.beginPath();ctx.arc(xx,yy,2.7,0,Math.PI*2);ctx.fill()}ctx.restore();
+ if(active||held){ctx.save();ctx.strokeStyle='#ffdb93';ctx.lineWidth=3;ctx.setLineDash([7,5]);ctx.beginPath();ctx.arc(cx,cy,48,0,Math.PI*2);ctx.stroke();ctx.restore()}}
+function portal(cx,cy,t){const pulse=.55+.45*Math.sin(t/430),won=finished||mode==='win';shine(cx,cy,won?142:100,'#ffbb43',won?.65:.35);ctx.save();ctx.translate(cx,cy+3);ctx.scale(1.32,1.32);ctx.shadowColor='#ffab44';ctx.shadowBlur=16;const g=ctx.createLinearGradient(-33,-40,37,32);g.addColorStop(0,'#6b5132');g.addColorStop(.43,'#e4c17f');g.addColorStop(1,'#695044');ctx.fillStyle=g;ctx.beginPath();ctx.moveTo(-37,39);ctx.lineTo(-37,-9);ctx.arc(0,-9,37,Math.PI,0);ctx.lineTo(37,39);ctx.closePath();ctx.fill();ctx.fillStyle=won?'#fff2af':'#8d4f26';ctx.beginPath();ctx.moveTo(-27,31);ctx.lineTo(-27,-10);ctx.arc(0,-10,27,Math.PI,0);ctx.lineTo(27,31);ctx.closePath();ctx.fill();ctx.shadowBlur=0;
+ ctx.strokeStyle=won?'#ffcc60':'#ffed9f';ctx.lineWidth=4;ctx.beginPath();for(let i=0;i<130;i++){let a=.12*i+t/1200,r=(25-i*.155)*Math.max(.24,pulse);const xx=Math.cos(a)*r,yy=-9+Math.sin(a)*r;if(i===0)ctx.moveTo(xx,yy);else ctx.lineTo(xx,yy)}ctx.stroke();ctx.restore()}
+function shineBeams(t){if(!trace)return;const points=trace.path;ctx.save();ctx.lineJoin='round';ctx.lineCap='round';ctx.globalCompositeOperation='screen';for(const [width,alpha,blur] of [[43,.17,38],[22,.32,20],[9,.75,13],[3,1,7]]){ctx.beginPath();points.forEach(([xx,yy],i)=>i?ctx.lineTo(xx,yy):ctx.moveTo(xx,yy));ctx.strokeStyle='#ffd76d';ctx.lineWidth=width;ctx.globalAlpha=alpha;ctx.shadowColor='#ffba4c';ctx.shadowBlur=blur;ctx.stroke()}ctx.restore();
+ let length=0;for(let i=1;i<points.length;i++)length+=Math.hypot(points[i][0]-points[i-1][0],points[i][1]-points[i-1][1]);if(!length)return;const progress=((t*.14)%length);let left=progress;for(let i=1;i<points.length;i++){const a=points[i-1],b=points[i],len=Math.hypot(b[0]-a[0],b[1]-a[1]);if(left<len){const p=left/len;shine(a[0]+(b[0]-a[0])*p,a[1]+(b[1]-a[1])*p,20,'#fff9be',.4);break}left-=len}}
+function shadowHero(cx,cy,t){ctx.save();ctx.translate(cx,cy);ctx.fillStyle='#030a1c90';ctx.beginPath();ctx.ellipse(9,35,35,13,0,0,Math.PI*2);ctx.fill();const sway=Math.sin(t/400)*2;ctx.fillStyle='#17172a';ctx.beginPath();ctx.ellipse(0,-3+sway,17,26,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#b3272c';ctx.beginPath();ctx.moveTo(-8,-16);ctx.quadraticCurveTo(-42,4+sway,-36,36);ctx.lineTo(0,21);ctx.closePath();ctx.fill();ctx.fillStyle='#251b21';ctx.beginPath();ctx.arc(0,-30+sway,14,0,Math.PI*2);ctx.fill();ctx.fillStyle='#201724';for(const s of [-1,1]){ctx.beginPath();ctx.ellipse(s*10,-37+sway,8,11,s*.5,0,Math.PI*2);ctx.fill()}ctx.strokeStyle='#120f1e';ctx.lineWidth=9;ctx.beginPath();ctx.moveTo(-8,19);ctx.lineTo(-10,33);ctx.moveTo(8,19);ctx.lineTo(10,33);ctx.stroke();ctx.restore()}
+function ghostArrow(obj,t){if(!obj||mode!=='game'||finished)return;const xx=x(obj.item.c),yy=y(obj.item.r),pulse=(Math.sin(t/330)+1)/2;ctx.save();ctx.shadowColor='#ffdf74';ctx.shadowBlur=17;ctx.strokeStyle=`rgba(255,235,150,${.6+.3*pulse})`;ctx.lineWidth=3;ctx.beginPath();ctx.arc(xx,yy,56,-2.1,-.5);ctx.stroke();ctx.beginPath();ctx.moveTo(xx+49,yy-27);ctx.lineTo(xx+55,yy-10);ctx.lineTo(xx+39,yy-14);ctx.stroke();ctx.restore()}
+function spark(px,py,count){for(let i=0;i<count;i++){const a=rnd(i+performance.now())*Math.PI*2,spd=1+rnd(i*4+px)*3;particles.push({x:px,y:py,vx:Math.cos(a)*spd,vy:Math.sin(a)*spd-1,life:40+rnd(i)*40,col:i%2?'#a9e5ff':'#fff2a9'})}}
+function particleRender(){ctx.save();for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vy+=.05;p.life-=1.2;if(p.life<=0){particles.splice(i,1);continue}ctx.globalAlpha=Math.min(.9,p.life/60);ctx.fillStyle=p.col;ctx.shadowColor=p.col;ctx.shadowBlur=7;ctx.beginPath();ctx.arc(p.x,p.y,2,0,Math.PI*2);ctx.fill()}ctx.restore()}
+function draw(t){if(backgroundDirty){atmosphere();backgroundDirty=false}ctx.drawImage(background,0,0);
+ if(mode==='game'||mode==='pause'||mode==='win'){
+  drawTorch(BX-7,BY+105,t);drawTorch(BX+COLS*C+7,BY+155,t);const goal=stage.goal;portal(x(goal[0]),y(goal[1]),t);shineBeams(t);
+  // Drop target deliberately visible, distinct from the crate's original space.
+  crates.forEach(c=>{if(!c.moved){ctx.save();const px=x(c.targetC),py=y(c.targetR);ctx.strokeStyle=`rgba(149,250,149,${.6+.2*Math.sin(t/290)})`;ctx.fillStyle='#45b34a23';ctx.lineWidth=3;ctx.setLineDash([10,7]);rounded(px-35,py-36,70,72,8);ctx.fill();ctx.stroke();ctx.restore()}});
+  objects.forEach(m=>mirror(x(m.c),y(m.r),m,t));lamp.drawAngle+=((lamp.dir*Math.PI/2-lamp.drawAngle+Math.PI*3)%(Math.PI*2)-Math.PI)*.16;lampSprite(x(lamp.c),y(lamp.r),lamp.drawAngle,t,activeGlow&&activeGlow.kind==='lamp');
+  crates.forEach(c=>{const cpos=c.moved?[c.targetC,c.targetR]:[c.c,c.r];if(drag&&drag.item===c){crateSprite(drag.px,drag.py,t,true,true)}else{const cx=x(cpos[0]),cy=y(cpos[1]);c.visualX+=(cx-c.visualX)*.18;c.visualY+=(cy-c.visualY)*.18;crateSprite(c.visualX,c.visualY,t,activeGlow&&activeGlow.item===c,false)}});
+  const heroX=x(0),heroY=y(8);if(finished){const pct=Math.min(1,(t-finishAt)/1300);shadowHero(heroX+(x(goal[0])-heroX)*pct,heroY+(y(goal[1])-heroY)*pct,t)}else shadowHero(heroX,heroY,t);ghostArrow(activeGlow,t);
+  if(finished&&t-finishAt>1350)complete();
+ }particleRender();requestAnimationFrame(draw)}
+// Stable test hooks for verifying actual optics, rotation, drag and level progression.
+window.svetTest={start:begin,rotateLamp:()=>doRotate({kind:'lamp',item:lamp}),rotateMirror:i=>doRotate({kind:'mirror',item:objects[i]}),moveCrate:i=>moveCrate(crates[i],true),state:()=>({mode,level,steps,lamp:lamp?.dir,mirrors:objects.map(m=>m.slash),crates:crates.map(c=>c.moved),trace:trace?{hit:trace.hit,path:trace.path}:null,unlocked:saved.unlocked})};
+requestAnimationFrame(draw);
 })();

@@ -1,39 +1,17 @@
 <!doctype html>
 <html lang="ru">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-<meta name="theme-color" content="#06112b">
-<meta name="description" content="Световой След — волшебная головоломка со светом, зеркалами и тенями. Пять уровней.">
-<link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
-<title>Световой След — 5 уровней</title>
-<link rel="stylesheet" href="style.css">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#06162d"><meta name="description" content="Световой След — красивая игра-головоломка: вращай настоящие зеркала, двигай ящики, направляй луч света к порталу.">
+<title>Световой След — 5 уровней</title><link rel="icon" href="assets/icon.svg" type="image/svg+xml"><link rel="stylesheet" href="style.css"><link rel="manifest" href="manifest.webmanifest">
 </head>
 <body>
-<div id="app">
-  <div id="viewport">
-    <canvas id="scene" width="941" height="1672" aria-label="Игровое поле. Нажимайте на светильники и зеркала, чтобы их поворачивать; нажимайте на ящик, чтобы переместить его." role="img"></canvas>
-    <div class="overlay" id="startScreen">
-      <div class="start-top"><span class="kicker">ХУДОЖЕСТВЕННАЯ ГОЛОВОЛОМКА</span><h1>Световой<br><em>След</em></h1><p>Направь свет — пробуди тень — открой портал</p></div>
-      <div class="start-actions"><button class="primary" id="playBtn">▶ &nbsp; Играть</button><button class="secondary" id="chooseBtn">Выбрать уровень</button><p class="micro">5 уровней • Без интернета • Без рекламы</p></div>
-    </div>
-    <div class="overlay hidden" id="levelsScreen">
-      <div class="panel title-panel"><h2>Путь света</h2><p>Каждый новый храм хранит свою тайну</p></div>
-      <div class="levels-grid" id="levelsGrid"></div>
-      <button class="back-button" id="levelsBack">← Назад</button>
-    </div>
-    <div class="hud hidden" id="gameHud">
-      <div class="hud-top"><button id="pauseBtn" class="hud-icon" aria-label="Пауза">Ⅱ</button><span id="levelTag">Уровень 1</span><div class="hud-stars" id="hudStars">✦ ✦ ✦</div></div>
-      <div class="guide" id="guide"><b id="guideTitle">Поверни светильник</b><span id="guideText">Коснись светильника на поле</span></div>
-      <div class="hud-bottom"><button id="undoBtn" class="hud-icon" title="Отменить ход" aria-label="Отменить">↶</button><button id="restartBtn" class="hud-icon" title="Начать сначала" aria-label="Перезапустить">↻</button><button id="hintBtn" class="hint-button" title="Подсказка">✧ Подсказка</button></div>
-      <div id="progress" class="progress-bar"><span id="progressFill"></span></div>
-      <div class="game-toast" id="toast" aria-live="polite"></div>
-    </div>
-    <div class="overlay modal hidden" id="pauseScreen"><div class="modal-card"><h2>Пауза</h2><p>Свет ждёт твоего решения</p><button class="primary" id="continueBtn">Продолжить</button><button class="secondary" id="restartMenuBtn">Начать уровень заново</button><button class="secondary" id="homeBtn">Главное меню</button></div></div>
-    <div class="overlay modal hidden" id="winScreen"><div class="modal-card win"><div class="laurel">✦ ✧ ✦</div><h2>Портал открыт!</h2><p id="winMessage">Тень нашла дорогу к свету</p><div class="result-stars" id="resultStars">★★★</div><p class="stats" id="stats"></p><button class="primary" id="nextBtn">Следующий уровень →</button><button class="secondary" id="winMenuBtn">К выбору уровней</button></div></div>
-  </div>
-</div>
-<script src="game.js" defer></script>
-</body>
-</html>
+<main id="viewport">
+ <canvas id="scene" width="720" height="1280" aria-label="Игровое поле со светильником, зеркалами, ящиками и световым лучом"></canvas>
+ <section id="start" class="screen start"><div class="logo"><span class="eyebrow">МАГИЧЕСКАЯ ГОЛОВОЛОМКА</span><h1>Световой<br><em>След</em></h1><p>Поверни зеркало. Направь луч.<br>Открой световой портал.</p></div><div class="start-actions"><button class="primary" id="play">▶ ИГРАТЬ</button><button class="secondary" id="levelChoice">Выбрать уровень</button><div class="fineprint">5 уровней · Всё управление пальцем · Без интернета</div></div></section>
+ <section id="choose" class="screen hidden"><div class="choice-head"><div class="eyebrow">ПРИКЛЮЧЕНИЕ</div><h2>Дорога к свету</h2><p>Пять магических загадок</p></div><div class="level-grid" id="levelGrid"></div><button class="secondary" id="back">← На главную</button></section>
+ <div id="hud" class="hud hidden"><div class="topbar"><button id="pause" class="round" aria-label="Пауза">Ⅱ</button><div class="level-heading"><small id="levelNumber">УРОВЕНЬ 1 / 5</small><b id="levelTitle">Первый луч</b></div><div id="stars" class="stars">☆☆☆</div></div><div class="objective" id="objective"><b id="instruction">Нажми на светильник</b><span id="explanation">Поверни его в сторону зеркала</span></div><div id="bottomTools" class="tools"><button id="reset" class="round" aria-label="Начать сначала">↻<small>Сброс</small></button><button id="undo" class="round" aria-label="Отменить ход">↶<small>Назад</small></button><button id="hint" class="hint">✦ Подсказка</button></div><div class="toast" id="toast" aria-live="polite"></div></div>
+ <section id="pauseModal" class="screen dialog hidden"><div class="panel"><div class="eyebrow">ПАУЗА</div><h2>Путь к свету</h2><p>Свет подождёт тебя</p><button class="primary" id="resume">Продолжить</button><button class="secondary" id="again">Заново</button><button class="secondary" id="toMenu">Главное меню</button></div></section>
+ <section id="win" class="screen dialog hidden"><div class="panel"><div class="eyebrow">ВЕЛИКОЛЕПНО!</div><div class="winicon">✦</div><h2>Портал открыт!</h2><div id="resultStars" class="big-stars">★★★</div><p id="winDescription">Ты направил свет к цели</p><button id="next" class="primary">Следующий уровень →</button><button id="toChoice" class="secondary">Выбрать уровень</button></div></section>
+ </main><script src="game.js" defer></script>
+</body></html>
