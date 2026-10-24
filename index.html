@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#06112b">
+<meta name="description" content="Световой След — волшебная головоломка со светом, зеркалами и тенями. Пять уровней.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<title>Световой След — 5 уровней</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <div id="viewport">
+    <canvas id="scene" width="941" height="1672" aria-label="Игровое поле. Нажимайте на светильники и зеркала, чтобы их поворачивать; нажимайте на ящик, чтобы переместить его." role="img"></canvas>
+    <div class="overlay" id="startScreen">
+      <div class="start-top"><span class="kicker">ХУДОЖЕСТВЕННАЯ ГОЛОВОЛОМКА</span><h1>Световой<br><em>След</em></h1><p>Направь свет — пробуди тень — открой портал</p></div>
+      <div class="start-actions"><button class="primary" id="playBtn">▶ &nbsp; Играть</button><button class="secondary" id="chooseBtn">Выбрать уровень</button><p class="micro">5 уровней • Без интернета • Без рекламы</p></div>
+    </div>
+    <div class="overlay hidden" id="levelsScreen">
+      <div class="panel title-panel"><h2>Путь света</h2><p>Каждый новый храм хранит свою тайну</p></div>
+      <div class="levels-grid" id="levelsGrid"></div>
+      <button class="back-button" id="levelsBack">← Назад</button>
+    </div>
+    <div class="hud hidden" id="gameHud">
+      <div class="hud-top"><button id="pauseBtn" class="hud-icon" aria-label="Пауза">Ⅱ</button><span id="levelTag">Уровень 1</span><div class="hud-stars" id="hudStars">✦ ✦ ✦</div></div>
+      <div class="guide" id="guide"><b id="guideTitle">Поверни светильник</b><span id="guideText">Коснись светильника на поле</span></div>
+      <div class="hud-bottom"><button id="undoBtn" class="hud-icon" title="Отменить ход" aria-label="Отменить">↶</button><button id="restartBtn" class="hud-icon" title="Начать сначала" aria-label="Перезапустить">↻</button><button id="hintBtn" class="hint-button" title="Подсказка">✧ Подсказка</button></div>
+      <div id="progress" class="progress-bar"><span id="progressFill"></span></div>
+      <div class="game-toast" id="toast" aria-live="polite"></div>
+    </div>
+    <div class="overlay modal hidden" id="pauseScreen"><div class="modal-card"><h2>Пауза</h2><p>Свет ждёт твоего решения</p><button class="primary" id="continueBtn">Продолжить</button><button class="secondary" id="restartMenuBtn">Начать уровень заново</button><button class="secondary" id="homeBtn">Главное меню</button></div></div>
+    <div class="overlay modal hidden" id="winScreen"><div class="modal-card win"><div class="laurel">✦ ✧ ✦</div><h2>Портал открыт!</h2><p id="winMessage">Тень нашла дорогу к свету</p><div class="result-stars" id="resultStars">★★★</div><p class="stats" id="stats"></p><button class="primary" id="nextBtn">Следующий уровень →</button><button class="secondary" id="winMenuBtn">К выбору уровней</button></div></div>
+  </div>
+</div>
+<script src="game.js" defer></script>
+</body>
+</html>
